@@ -1,0 +1,41 @@
+[
+  {
+    "id": "fav",
+    "name": "Favorites",
+    "videos": [
+      {
+        "videoId": "Kz-DEWV66xI",
+        "title": "Explore the 4K Animal World – Tranquil Wildlife Moments and Soothing Music",
+        "channelTitle": "Rhythm Emotion",
+        "thumbnail": "https://i.ytimg.com/vi/Kz-DEWV66xI/mqdefault.jpg",
+        "publishedAt": "2025-10-01T12:58:17Z",
+        "viewCount": "272255",
+        "duration": "PT8H29M39S"
+      },
+      {
+        "videoId": "mC3jjCVRRtk",
+        "title": "Italy 4K | Explore Hidden Gems and Breathtaking Landscapes With Deep House Chill",
+        "channelTitle": "Planet Escape 4K",
+        "thumbnail": "https://i.ytimg.com/vi/mC3jjCVRRtk/mqdefault.jpg",
+        "publishedAt": "2025-07-12T11:01:19Z",
+        "viewCount": "697419",
+        "duration": "PT2H20M"
+      }
+    ]
+  },
+  {
+    "id": "pl_1767707656934",
+    "name": "fav",
+    "videos": [
+      {
+        "videoId": "QZl_HuHjfnQ",
+        "title": "🌿 Exploring UNREAL PLACES on Earth in 4K HDR (60FPS, Dolby Vision) | Green Ambience Nature Film",
+        "channelTitle": "Beautiful World 4K Film Music",
+        "thumbnail": "https://i.ytimg.com/vi/QZl_HuHjfnQ/mqdefault.jpg",
+        "publishedAt": "2024-08-08T10:01:03Z",
+        "viewCount": "2615238",
+        "duration": "PT3H54M40S"
+      }
+    ]
+  }
+]

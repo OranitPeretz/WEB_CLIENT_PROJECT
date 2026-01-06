@@ -17,10 +17,9 @@ body {
   color: white;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* <<< critical fix */
   padding: 0 20px;
-  gap: 16px;
+  gap: 24px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.12);
 }
 
 .topbar h1 {

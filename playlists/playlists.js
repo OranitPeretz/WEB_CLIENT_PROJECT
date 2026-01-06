@@ -2,7 +2,7 @@
 const currentUser = JSON.parse(sessionStorage.getItem("currentUser"));
 if (!currentUser) location.href = "../login/login.html";
 
-const playlistKey = `playlists_${currentUser.username}`;
+const API_BASE = "http://localhost:3000/api";
 
 
 // ================= USER CHIP =================
@@ -10,12 +10,18 @@ const userName = document.getElementById("userName");
 const userAvatar = document.getElementById("userAvatar");
 const logoutBtn = document.getElementById("logoutBtn");
 
-function setUserChip(user) {
-  userName.textContent = `${user.firstName} ${user.lastName}`;
-  userAvatar.src = user.imageUrl || "https://via.placeholder.com/80";
+function setTopBarUser(user) {
+  userName.textContent = user.firstName + " " + user.lastName;
+
+  const fallback = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    user.firstName + " " + user.lastName
+  )}&background=1976d2&color=fff`;
+
+  userAvatar.src = user.imageUrl || fallback;
+  userAvatar.onerror = () => (userAvatar.src = fallback);
 }
 
-setUserChip(currentUser);
+setTopBarUser(currentUser);
 
 logoutBtn.onclick = () => {
   sessionStorage.removeItem("currentUser");
@@ -43,7 +49,7 @@ const playerCard = document.getElementById("playerCard");
 
 
 // ================= STATE =================
-let playlists = JSON.parse(localStorage.getItem(playlistKey)) || [];
+let playlists = [];
 let activePlaylistId = null;
 
 let currentPlaylist = null;
@@ -54,31 +60,42 @@ let currentIndex = -1;
 let selectedIndex = -1;
 
 let sortDirection = 1;
-
 let player = null;
 let isPlaying = false;
 
 
-// ================= UTILS =================
-function save() {
-  localStorage.setItem(playlistKey, JSON.stringify(playlists));
-}
+// ================= SERVER HELPERS =================
+async function loadPlaylistsFromServer() {
+  const res = await fetch(`${API_BASE}/playlists/${currentUser.username}`);
 
-// Ensures at least Favorites playlist always exists
-function ensureDefaultPlaylist() {
-  if (!playlists || playlists.length === 0) {
-    playlists = [{
-      id: "fav",
-      name: "Favorites",
-      videos: []
-    }];
-    save();
+  if (!res.ok) {
+    console.error("Failed to load playlists");
+    playlists = [];
+    return;
   }
+
+  playlists = await res.json();
 }
 
-// read ?open=playlistId
-function getQueryPlaylistId() {
-  return new URLSearchParams(location.search).get("open");
+async function savePlaylistsToServer() {
+  await fetch(`${API_BASE}/playlists/${currentUser.username}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(playlists)
+  });
+}
+
+async function ensureDefaultPlaylist() {
+  if (!playlists || playlists.length === 0) {
+    playlists = [
+      {
+        id: "fav",
+        name: "Favorites",
+        videos: []
+      }
+    ];
+    await savePlaylistsToServer();
+  }
 }
 
 
@@ -86,7 +103,7 @@ function getQueryPlaylistId() {
 function renderSidebar() {
   playlistList.innerHTML = "";
 
-  playlists.forEach(pl => {
+  playlists.forEach((pl) => {
     const li = document.createElement("li");
     li.textContent = pl.name;
     li.className = pl.id === activePlaylistId ? "active" : "";
@@ -97,29 +114,28 @@ function renderSidebar() {
 
 function selectPlaylist(id) {
   activePlaylistId = id;
-  stopPlayback();
   selectedIndex = -1;
+  stopPlayback();
   renderSidebar();
   renderContent();
 }
 
 
 // ================= NEW PLAYLIST =================
-newPlaylistBtn.onclick = () => {
-  const name = prompt("Enter playlist name:");
-  if (!name || !name.trim()) return;
+newPlaylistBtn.onclick = async () => {
+  const name = prompt("Playlist name:");
+  if (!name) return;
 
-  const newPl = {
-    id: "pl_" + Date.now(),
-    name: name.trim(),
-    videos: []
-  };
+  const newPl = { id: "pl_" + Date.now(), name, videos: [] };
 
-  playlists.push(newPl);
-  save();
+  await fetch(`${API_BASE}/playlists/${currentUser.username}/addPlaylist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(newPl)
+  });
 
+  await loadPlaylistsFromServer();
   activePlaylistId = newPl.id;
-
   renderSidebar();
   renderContent();
 };
@@ -130,7 +146,7 @@ function getFilteredVideos(pl) {
   let vids = [...(pl.videos || [])];
   const q = searchInput.value.toLowerCase().trim();
 
-  if (q) vids = vids.filter(v => v.title.toLowerCase().includes(q));
+  if (q) vids = vids.filter((v) => v.title.toLowerCase().includes(q));
 
   if (sortSelect.value === "az") {
     vids.sort((a, b) => a.title.localeCompare(b.title));
@@ -145,7 +161,7 @@ function getFilteredVideos(pl) {
 
 // ================= CONTENT =================
 function renderContent() {
-  currentPlaylist = playlists.find(p => p.id === activePlaylistId);
+  currentPlaylist = playlists.find((p) => p.id === activePlaylistId);
   contentBody.innerHTML = "";
 
   if (!currentPlaylist) {
@@ -175,33 +191,47 @@ function renderContent() {
 
       <select class="rating-select">
         <option value="0">☆</option>
-        ${[1,2,3,4,5].map(n =>
-          `<option value="${n}" ${video.rating == n ? "selected" : ""}>${"★".repeat(n)}</option>`
+        ${[1,2,3,4,5].map(
+          (n) => `<option value="${n}" ${video.rating == n ? "selected" : ""}>
+            ${"★".repeat(n)}
+          </option>`
         ).join("")}
       </select>
 
       <button class="delete-song">🗑</button>
     `;
 
+    // בחירת שיר
     card.onclick = () => {
       selectedIndex = index;
       renderContent();
     };
 
+    // דירוג
     const ratingSelect = card.querySelector(".rating-select");
-    ratingSelect.onmousedown = e => e.stopPropagation();
-    ratingSelect.onclick = e => e.stopPropagation();
-    ratingSelect.onchange = e => {
+    ratingSelect.onmousedown = (e) => e.stopPropagation();
+    ratingSelect.onclick = (e) => e.stopPropagation();
+    ratingSelect.onchange = async (e) => {
       e.stopPropagation();
       video.rating = Number(e.target.value);
-      save();
+      await savePlaylistsToServer();
       if (sortSelect.value === "rating") renderContent();
     };
 
-    card.querySelector(".delete-song").onclick = e => {
+    // מחיקת שיר
+    card.querySelector(".delete-song").onclick = async (e) => {
       e.stopPropagation();
-      currentPlaylist.videos = currentPlaylist.videos.filter(v => v !== video);
-      save();
+
+      await fetch(`${API_BASE}/playlists/${currentUser.username}/deleteVideo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          playlistId: activePlaylistId,
+          videoId: video.videoId
+        })
+      });
+
+      await loadPlaylistsFromServer();
       stopPlayback();
       renderContent();
     };
@@ -220,7 +250,7 @@ function playCurrent() {
     player = new YT.Player("playerHost", {
       videoId: video.videoId,
       events: {
-        onReady: e => e.target.playVideo(),
+        onReady: (e) => e.target.playVideo(),
         onStateChange: onPlayerStateChange
       }
     });
@@ -297,38 +327,49 @@ playPauseBtn.onclick = () => {
 
 
 // ================= DELETE PLAYLIST =================
-deletePlaylistBtn.onclick = () => {
-  if (!activePlaylistId) return;
+deletePlaylistBtn.onclick = async () => {
+  await fetch(`${API_BASE}/playlists/${currentUser.username}/deletePlaylist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ playlistId: activePlaylistId })
+  });
 
-  const pl = playlists.find(p => p.id === activePlaylistId);
-  if (!pl) return;
-
-  if (!confirm(`Are you sure you want to delete playlist "${pl.name}"?`)) {
-    return;
-  }
-
-  playlists = playlists.filter(p => p.id !== activePlaylistId);
-  save();
-
-  ensureDefaultPlaylist();   // <— PROTECTIVE FIX
-
+  await loadPlaylistsFromServer();
   activePlaylistId = playlists[0].id;
-
-  stopPlayback();
   renderSidebar();
   renderContent();
 };
 
 
+// ================= ADD VIDEO TO PLAYLIST =================
+async function addVideoToPlaylist(video) {
+  await fetch(`${API_BASE}/playlists/${currentUser.username}/add`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      playlistId: activePlaylistId,
+      video
+    })
+  });
+
+  await loadPlaylistsFromServer();
+  renderContent();
+}
+
+
 // ================= INIT =================
-ensureDefaultPlaylist();
+(async function init() {
+  await loadPlaylistsFromServer();
+  await ensureDefaultPlaylist();
 
-activePlaylistId = getQueryPlaylistId() || playlists[0]?.id || null;
+  activePlaylistId =
+    new URLSearchParams(location.search).get("open") ||
+    playlists[0]?.id ||
+    null;
 
-renderSidebar();
-renderContent();
+  renderSidebar();
+  renderContent();
 
-(function loadYT() {
   const s = document.createElement("script");
   s.src = "https://www.youtube.com/iframe_api";
   document.body.appendChild(s);

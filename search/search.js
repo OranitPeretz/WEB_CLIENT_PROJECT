@@ -1,19 +1,20 @@
-// ========= Config =========
+// ========= CONFIG =========
 const YOUTUBE_API_KEY = "AIzaSyD2AOjcCs2xKzDH2MSZ5QMJC92MIWVwiOE";
+const API_BASE = "http://localhost:3000/api";
 
-// ========= AUTH (Moved to top – FIXED) =========
+// ========= AUTH =========
 function getCurrentUser() {
-  const raw = sessionStorage.getItem("currentUser");
-  return raw ? JSON.parse(raw) : null;
+    const raw = sessionStorage.getItem("currentUser");
+    return raw ? JSON.parse(raw) : null;
 }
 
 function requireLogin() {
-  const user = getCurrentUser();
-  if (!user) {
-    window.location.href = "../login/login.html";
-    return null;
-  }
-  return user;
+    const user = getCurrentUser();
+    if (!user) {
+        window.location.href = "../login/login.html";
+        return null;
+    }
+    return user;
 }
 
 const currentUser = requireLogin();
@@ -30,392 +31,380 @@ const loadMoreBtn = document.getElementById("loadMoreBtn");
 
 const logoutBtn = document.getElementById("logoutBtn");
 
-// Video modal
 const videoBackdrop = document.getElementById("videoBackdrop");
 const videoFrame = document.getElementById("videoFrame");
 const videoTitleEl = document.getElementById("videoTitle");
 const videoCloseBtn = document.getElementById("videoCloseBtn");
 
-// Toast
-const toastEl = document.getElementById("toast");
-
-// Favorites modal
 const modalBackdrop = document.getElementById("modalBackdrop");
 const modalSubtitle = document.getElementById("modalSubtitle");
 const playlistSelect = document.getElementById("playlistSelect");
 const cancelBtn = document.getElementById("cancelBtn");
 const saveBtn = document.getElementById("saveBtn");
 
-// Added-popup
 const addedPopup = document.getElementById("addedPopup");
 const popupText = document.getElementById("popupText");
 const popupGoBtn = document.getElementById("popupGoBtn");
 const popupCloseBtn = document.getElementById("popupCloseBtn");
 
-// ========= Top Bar =========
-function setTopBarUser(user) {
-  welcomeMsg.textContent = `Welcome, ${user.username}!`;
-  userName.textContent = user.firstName + " " + user.lastName;
-
-  const fallback =
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName + " " + user.lastName)}&background=1976d2&color=fff`;
-
-  userAvatar.src = user.imageUrl || fallback;
-  userAvatar.onerror = () => userAvatar.src = fallback;
-}
-
+// ========= USER TOP BAR =========
 setTopBarUser(currentUser);
 
-// ========= Utilities =========
-function escapeHtml(str) {
-  return (str || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function setTopBarUser(user) {
+    welcomeMsg.textContent = `Welcome, ${user.username}!`;
+    userName.textContent = user.firstName + " " + user.lastName;
+
+    const fallback =
+        `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName + " " + user.lastName)}&background=1976d2&color=fff`;
+
+    userAvatar.src = user.imageUrl || fallback;
+    userAvatar.onerror = () => userAvatar.src = fallback;
 }
 
-function showToast(msg) {
-  toastEl.textContent = msg;
-  toastEl.classList.add("show");
-  setTimeout(() => toastEl.classList.remove("show"), 1600);
+// ========= UTIL =========
+function escapeHtml(str) {
+    return (str || "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
 }
 
 function formatViews(n) {
-  const num = Number(n || 0);
-  if (num >= 1e9) return (num / 1e9).toFixed(1) + "B";
-  if (num >= 1e6) return (num / 1e6).toFixed(1) + "M";
-  if (num >= 1e3) return (num / 1e3).toFixed(1) + "K";
-  return num;
+    const num = Number(n || 0);
+    if (num >= 1e9) return (num / 1e9).toFixed(1) + "B";
+    if (num >= 1e6) return (num / 1e6).toFixed(1) + "M";
+    if (num >= 1e3) return (num / 1e3).toFixed(1) + "K";
+    return num;
 }
 
 function parseDuration(iso) {
-  if (!iso || typeof iso !== "string") return "";
+    if (!iso || typeof iso !== "string") return "";
 
-  let hours = 0, minutes = 0, seconds = 0;
+    let hours = 0, minutes = 0, seconds = 0;
 
-  const h = iso.match(/(\d+)H/);
-  const m = iso.match(/(\d+)M/);
-  const s = iso.match(/(\d+)S/);
+    const h = iso.match(/(\d+)H/);
+    const m = iso.match(/(\d+)M/);
+    const s = iso.match(/(\d+)S/);
 
-  if (h) hours = Number(h[1]);
-  if (m) minutes = Number(m[1]);
-  if (s) seconds = Number(s[1]);
+    if (h) hours = Number(h[1]);
+    if (m) minutes = Number(m[1]);
+    if (s) seconds = Number(s[1]);
 
-  // Format: H:MM:SS or MM:SS if no hours
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }
+    if (hours > 0)
+        return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-// ========= Playlists System =========
-function playlistsKey(username) {
-  return `playlists_${username}`;
+// ========= SERVER FUNCTIONS =========
+
+async function loadPlaylists() {
+    const res = await fetch(`${API_BASE}/playlists/${currentUser.username}`);
+    return await res.json();
 }
 
-function getUserPlaylists(username) {
-  let stored = JSON.parse(localStorage.getItem(playlistsKey(username)));
-  if (!stored) {
-    stored = [{ id: "fav", name: "Favorites", videos: [] }];
-    saveUserPlaylists(username, stored);
-  }
-  return stored;
+async function addVideoToPlaylist(playlistId, video) {
+    await fetch(`${API_BASE}/playlists/${currentUser.username}/add`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playlistId, video })
+    });
 }
 
-function saveUserPlaylists(username, playlists) {
-  localStorage.setItem(playlistsKey(username), JSON.stringify(playlists));
+async function createPlaylist(name) {
+    const newPl = {
+        id: "pl_" + Date.now(),
+        name,
+        videos: []
+    };
+
+    await fetch(`${API_BASE}/playlists/${currentUser.username}/addPlaylist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newPl)
+    });
+
+    return newPl;
 }
 
-function getAllSavedVideoIds(username) {
-  const pl = getUserPlaylists(username);
-  const set = new Set();
-  pl.forEach(p => p.videos.forEach(v => set.add(v.videoId)));
-  return set;
-}
+// ========= VIDEO MODAL =========
 
-// ========= Video Modal =========
 function openVideoModal(videoId, title) {
-  videoTitleEl.textContent = title;
-  videoFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
-  videoBackdrop.classList.add("show");
+    videoTitleEl.textContent = title;
+    videoFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    videoBackdrop.classList.add("show");
 }
 
 function closeVideoModal() {
-  videoFrame.src = "";
-  videoBackdrop.classList.remove("show");
+    videoFrame.src = "";
+    videoBackdrop.classList.remove("show");
 }
 
 videoCloseBtn.onclick = closeVideoModal;
 videoBackdrop.onclick = e => {
-  if (e.target === videoBackdrop) closeVideoModal();
+    if (e.target === videoBackdrop) closeVideoModal();
 };
 
-// ========= Add-to-Playlist Modal =========
+// ========= ADD TO PLAYLIST MODAL =========
+
 let selectedVideo = null;
 let pendingNewPlaylist = null;
 
-function openModalForVideo(video) {
-  selectedVideo = video;
-  pendingNewPlaylist = null;
+async function openModalForVideo(video) {
+    selectedVideo = video;
+    pendingNewPlaylist = null;
 
-  modalSubtitle.textContent = `Add: ${video.title}`;
+    modalSubtitle.textContent = `Add: ${video.title}`;
 
-  const playlists = getUserPlaylists(currentUser.username);
+    const playlists = await loadPlaylists();
 
-  playlistSelect.innerHTML =
-    playlists.map(pl => `<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join("") +
-    `<option value="__new__">+ Create new playlist…</option>`;
+    playlistSelect.innerHTML =
+        playlists.map(pl => `<option value="${pl.id}">${escapeHtml(pl.name)}</option>`).join("") +
+        `<option value="__new__">+ Create new playlist…</option>`;
 
-  modalBackdrop.classList.add("show");
+    modalBackdrop.classList.add("show");
 }
 
 playlistSelect.onchange = () => {
-  if (playlistSelect.value !== "__new__") return;
+    if (playlistSelect.value !== "__new__") return;
 
-  const name = prompt("Playlist name:");
-  if (!name?.trim()) {
-    playlistSelect.value = "";
-    return;
-  }
+    const name = prompt("Playlist name:");
+    if (!name?.trim()) {
+        playlistSelect.value = "";
+        return;
+    }
 
-  pendingNewPlaylist = name.trim();
+    pendingNewPlaylist = name.trim();
 
-  const tmpId = "tmp_" + Date.now();
-  const playlists = getUserPlaylists(currentUser.username);
+    const tmpId = "tmp_" + Date.now();
 
-  playlistSelect.innerHTML =
-    `<option selected value="${tmpId}">${escapeHtml(pendingNewPlaylist)} (new)</option>` +
-    playlists.map(pl => `<option value="${pl.id}">${pl.name}</option>`).join("");
+    playlistSelect.innerHTML =
+        `<option selected value="${tmpId}">${escapeHtml(pendingNewPlaylist)} (new)</option>`;
 };
 
-cancelBtn.onclick = () => modalBackdrop.classList.remove("show");
+saveBtn.onclick = async () => {
+    if (!selectedVideo) return;
 
-// ========= Popup =========
+    let playlistId = playlistSelect.value;
+
+    if (playlistId.startsWith("tmp_")) {
+        const newPL = await createPlaylist(pendingNewPlaylist);
+        playlistId = newPL.id;
+    }
+
+    await addVideoToPlaylist(playlistId, selectedVideo);
+
+    modalBackdrop.classList.remove("show");
+
+    showAddedPopup(selectedVideo.title, pendingNewPlaylist || "Playlist", playlistId);
+};
+
+// ========= ADDED POPUP =========
 function showAddedPopup(title, playlistName, playlistId) {
-  popupText.textContent =
-    `"${title}" was added to playlist "${playlistName}"`;
+    popupText.textContent =
+        `"${title}" was added to playlist "${playlistName}"`;
 
-  addedPopup.classList.add("show");
+    addedPopup.classList.add("show");
 
-  popupGoBtn.onclick = () =>
-    location.href = `../playlists/playlists.html?open=${playlistId}`;
+    popupGoBtn.onclick = () =>
+        location.href = `../playlists/playlists.html?open=${playlistId}`;
 
-  popupCloseBtn.onclick = () =>
-    addedPopup.classList.remove("show");
+    popupCloseBtn.onclick = () =>
+        addedPopup.classList.remove("show");
 }
 
-// ========= SAVE BUTTON =========
-saveBtn.onclick = () => {
-  if (!selectedVideo) return;
+// ========= SEARCH SYSTEM =========
 
-  let playlists = getUserPlaylists(currentUser.username);
-  let playlistId = playlistSelect.value;
-
-  // Create playlist if needed
-  if (playlistId.startsWith("tmp_")) {
-    const realId = "pl_" + Date.now();
-    playlists.push({
-      id: realId,
-      name: pendingNewPlaylist,
-      videos: []
-    });
-    saveUserPlaylists(currentUser.username, playlists);
-    playlistId = realId;
-  }
-
-  const playlist = playlists.find(p => p.id === playlistId);
-  if (!playlist) return;
-
-  // Add the video
-  if (!playlist.videos.some(v => v.videoId === selectedVideo.videoId)) {
-    playlist.videos.push(selectedVideo);
-    saveUserPlaylists(currentUser.username, playlists);
-  }
-
-  modalBackdrop.classList.remove("show");
-
-  // Update button state without re-render breaking events
-  const btn = document.querySelector(`button[data-id="${selectedVideo.videoId}"][data-action="fav"]`);
-  if (btn) {
-    btn.textContent = "Added ✓";
-    btn.disabled = true;
-  }
-
-  showAddedPopup(selectedVideo.title, playlist.name, playlist.id);
-};
-
-// ========= YOUTUBE API =========
 let currentQuery = "";
 let nextPageToken = null;
 let lastVideos = [];
 
-async function searchYouTube(query, pageToken = "") {
-  const url = new URL("https://www.googleapis.com/youtube/v3/search");
-  url.searchParams.set("part", "snippet");
-  url.searchParams.set("type", "video");
-  url.searchParams.set("maxResults", "12");
-  url.searchParams.set("q", query);
-  url.searchParams.set("key", YOUTUBE_API_KEY);
-  if (pageToken) url.searchParams.set("pageToken", pageToken);
-
-  const res = await fetch(url);
-  const data = await res.json();
-
-  const base = (data.items || [])
-    .map(item => ({
-      videoId: item.id?.videoId,
-      title: item.snippet?.title,
-      channelTitle: item.snippet?.channelTitle,
-      thumbnail: item.snippet?.thumbnails?.medium?.url,
-      publishedAt: item.snippet?.publishedAt
-    }))
-    .filter(v => v.videoId);
-
-  // Fetch stats
-  const ids = base.map(v => v.videoId).join(",");
-  if (ids) {
-    const details = new URL("https://www.googleapis.com/youtube/v3/videos");
-    details.searchParams.set("part", "statistics,contentDetails");
-    details.searchParams.set("id", ids);
-    details.searchParams.set("key", YOUTUBE_API_KEY);
-
-    const dRes = await fetch(details);
-    const dData = await dRes.json();
-
-    const map = new Map();
-    dData.items?.forEach(item => map.set(item.id, item));
-
-    base.forEach(v => {
-      const d = map.get(v.videoId);
-      v.viewCount = d?.statistics?.viewCount || 0;
-      v.duration = d?.contentDetails?.duration || "";
-    });
-  }
-
-  return {
-    videos: base,
-    nextPageToken: data.nextPageToken || null
-  };
-}
-
-// ========= Render =========
-function renderResults(videos) {
-  const savedIds = getAllSavedVideoIds(currentUser.username);
-
-  resultsEl.innerHTML = videos.map(v => `
-    <article class="video-card">
-      <img class="thumb" src="${v.thumbnail}">
-      <div class="details">
-        <h3>${escapeHtml(v.title)}</h3>
-        <div class="meta">
-          <span>📺 ${escapeHtml(v.channelTitle)}</span>
-          <span>👁 ${formatViews(v.viewCount)}</span>
-          <span>⏱ ${parseDuration(v.duration)}</span>
-        </div>
-        <div class="actions">
-          <button class="btn-fav"
-                  data-id="${v.videoId}"
-                  data-action="fav"
-                  ${savedIds.has(v.videoId) ? "disabled" : ""}>
-            ${savedIds.has(v.videoId) ? "Added ✓" : "Add to Playlist"}
-          </button>
-          <button class="btn-open" data-id="${v.videoId}" data-action="open">Play</button>
-        </div>
-      </div>
-    </article>
-  `).join("");
-
-  resultsEl.querySelectorAll("button").forEach(btn => {
-    const id = btn.dataset.id;
-    const action = btn.dataset.action;
-
-    if (action === "open") {
-      btn.onclick = () => {
-        const video = videos.find(v => v.videoId === id);
-        openVideoModal(video.videoId, video.title);
-      };
-    }
-
-    if (action === "fav") {
-      btn.onclick = () => {
-        const video = videos.find(v => v.videoId === id);
-        openModalForVideo(video);
-      };
-    }
-  });
-}
-
-// ========= State Save =========
+// === STATE SAVE ===
 function saveSearchState() {
-  localStorage.setItem("searchQuery", currentQuery);
-  localStorage.setItem("searchResults", JSON.stringify(lastVideos));
-  localStorage.setItem("searchNextPageToken", nextPageToken || "");
+    localStorage.setItem("searchQuery", currentQuery);
+    localStorage.setItem("searchResults", JSON.stringify(lastVideos));
+    localStorage.setItem("searchNextPageToken", nextPageToken || "");
+    localStorage.setItem("searchScroll", window.scrollY);
 }
 
+// === STATE LOAD ===
+function loadSearchState() {
+    const q = localStorage.getItem("searchQuery");
+    const res = localStorage.getItem("searchResults");
+    const token = localStorage.getItem("searchNextPageToken");
+
+    if (!q || !res) return false;
+
+    currentQuery = q;
+    nextPageToken = token || null;
+    lastVideos = JSON.parse(res);
+    queryInput.value = q;
+
+    renderResults(lastVideos);
+
+    setTimeout(() => {
+        const scrollY = Number(localStorage.getItem("searchScroll") || 0);
+        window.scrollTo(0, scrollY);
+    }, 80);
+
+    loadMoreBtn.style.display = nextPageToken ? "block" : "none";
+    return true;
+}
+
+// ========= YOUTUBE API =========
+async function searchYouTube(query, pageToken = "") {
+    const url = new URL("https://www.googleapis.com/youtube/v3/search");
+    url.searchParams.set("part", "snippet");
+    url.searchParams.set("type", "video");
+    url.searchParams.set("maxResults", "12");
+    url.searchParams.set("q", query);
+    url.searchParams.set("key", YOUTUBE_API_KEY);
+    if (pageToken) url.searchParams.set("pageToken", pageToken);
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    const base = (data.items || [])
+        .map(item => ({
+            videoId: item.id?.videoId,
+            title: item.snippet?.title,
+            channelTitle: item.snippet?.channelTitle,
+            thumbnail: item.snippet?.thumbnails?.medium?.url,
+            publishedAt: item.snippet?.publishedAt
+        }))
+        .filter(v => v.videoId);
+
+    const ids = base.map(v => v.videoId).join(",");
+    if (ids) {
+        const details = new URL("https://www.googleapis.com/youtube/v3/videos");
+        details.searchParams.set("part", "statistics,contentDetails");
+        details.searchParams.set("id", ids);
+        details.searchParams.set("key", YOUTUBE_API_KEY);
+
+        const dRes = await fetch(details);
+        const dData = await dRes.json();
+
+        const map = new Map();
+        dData.items?.forEach(item => map.set(item.id, item));
+
+        base.forEach(v => {
+            const d = map.get(v.videoId);
+            v.viewCount = d?.statistics?.viewCount || 0;
+            v.duration = d?.contentDetails?.duration || "";
+        });
+    }
+
+    return {
+        videos: base,
+        nextPageToken: data.nextPageToken || null
+    };
+}
+
+// ========= RENDER RESULTS =========
+async function renderResults(videos) {
+    const playlists = await loadPlaylists();
+    const allVideoIds = new Set();
+
+    playlists.forEach(pl =>
+        pl.videos.forEach(v => allVideoIds.add(v.videoId))
+    );
+
+    resultsEl.innerHTML = videos.map(v => `
+        <article class="video-card">
+            <img class="thumb" src="${v.thumbnail}">
+            <div class="details">
+                <h3>${escapeHtml(v.title)}</h3>
+                <div class="meta">
+                    <span>📺 ${escapeHtml(v.channelTitle)}</span>
+                    <span>👁 ${formatViews(v.viewCount)}</span>
+                    <span>⏱ ${parseDuration(v.duration)}</span>
+                </div>
+                <div class="actions">
+                    <button class="btn-fav"
+                            data-id="${v.videoId}"
+                            data-action="fav"
+                            ${allVideoIds.has(v.videoId) ? "disabled" : ""}>
+                        ${allVideoIds.has(v.videoId) ? "Added ✓" : "Add to Playlist"}
+                    </button>
+                    <button class="btn-open" data-id="${v.videoId}" data-action="open">Play</button>
+                </div>
+            </div>
+        </article>
+    `).join("");
+
+    resultsEl.querySelectorAll("button").forEach(btn => {
+        const id = btn.dataset.id;
+        const action = btn.dataset.action;
+
+        if (action === "open") {
+            btn.onclick = () => {
+                const video = videos.find(v => v.videoId === id);
+                openVideoModal(video.videoId, video.title);
+            };
+        }
+
+        if (action === "fav") {
+            btn.onclick = () => {
+                const video = videos.find(v => v.videoId === id);
+                openModalForVideo(video);
+            };
+        }
+    });
+}
+
+// ========= SEARCH FLOW =========
 async function runSearch(query) {
-  currentQuery = query.trim();
-  if (!currentQuery) return;
+    currentQuery = query.trim();
+    if (!currentQuery) return;
 
-  const data = await searchYouTube(currentQuery);
-  lastVideos = data.videos;
-  nextPageToken = data.nextPageToken;
+    const data = await searchYouTube(currentQuery);
+    lastVideos = data.videos;
+    nextPageToken = data.nextPageToken;
 
-  renderResults(lastVideos);
-  loadMoreBtn.style.display = nextPageToken ? "block" : "none";
+    await renderResults(lastVideos);
+    loadMoreBtn.style.display = nextPageToken ? "block" : "none";
 
-  saveSearchState();
+    saveSearchState();
 }
 
 async function loadMore() {
-  if (!nextPageToken) return;
+    if (!nextPageToken) return;
 
-  const data = await searchYouTube(currentQuery, nextPageToken);
-  lastVideos.push(...data.videos);
-  nextPageToken = data.nextPageToken;
+    const data = await searchYouTube(currentQuery, nextPageToken);
+    lastVideos.push(...data.videos);
+    nextPageToken = data.nextPageToken;
 
-  renderResults(lastVideos);
-  loadMoreBtn.style.display = nextPageToken ? "block" : "none";
+    await renderResults(lastVideos);
+    loadMoreBtn.style.display = nextPageToken ? "block" : "none";
 
-  saveSearchState();
+    saveSearchState();
 }
 
 loadMoreBtn.onclick = loadMore;
 
-// ========= Scroll Position =========
+searchForm.onsubmit = e => {
+    e.preventDefault();
+    runSearch(queryInput.value);
+};
+
+// ========= SCROLL SAVE =========
 window.addEventListener("scroll", () => {
-  localStorage.setItem("searchScroll", window.scrollY);
+    localStorage.setItem("searchScroll", window.scrollY);
 });
 
 // ========= INIT =========
-const savedQuery = localStorage.getItem("searchQuery");
-const savedResults = localStorage.getItem("searchResults");
-const savedToken = localStorage.getItem("searchNextPageToken");
-
-if (savedQuery && savedResults) {
-  currentQuery = savedQuery;
-  queryInput.value = savedQuery;
-
-  lastVideos = JSON.parse(savedResults);
-  nextPageToken = savedToken || null;
-
-  renderResults(lastVideos);
-
-  window.scrollTo(0, Number(localStorage.getItem("searchScroll") || 0));
-  loadMoreBtn.style.display = nextPageToken ? "block" : "none";
+if (!loadSearchState()) {
+    // No saved state
+    resultsEl.innerHTML = "";
 }
 
-searchForm.onsubmit = e => {
-  e.preventDefault();
-  runSearch(queryInput.value);
-};
-
 logoutBtn.onclick = () => {
-  sessionStorage.removeItem("currentUser");
-  localStorage.removeItem("searchQuery");
-  localStorage.removeItem("searchResults");
-  localStorage.removeItem("searchScroll");
-  location.href = "../login/login.html";
+    sessionStorage.removeItem("currentUser");
+    localStorage.removeItem("searchQuery");
+    localStorage.removeItem("searchResults");
+    localStorage.removeItem("searchNextPageToken");
+    localStorage.removeItem("searchScroll");
+    location.href = "../login/login.html";
 };

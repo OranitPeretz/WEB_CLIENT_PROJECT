@@ -1,13 +1,12 @@
+// ==================== ELEMENTS ====================
 const form = document.getElementById("loginForm");
 const msg = document.getElementById("formMessage");
 
 const usernameEl = document.getElementById("username");
 const passwordEl = document.getElementById("password");
 
-function getUsers() {
-  return JSON.parse(localStorage.getItem("users")) || [];
-}
 
+// ==================== UI HELPERS ====================
 function setMessage(text, isSuccess = false) {
   msg.textContent = text;
   msg.classList.toggle("success", isSuccess);
@@ -18,7 +17,9 @@ function clearInvalid() {
   passwordEl.classList.remove("invalid");
 }
 
-form.addEventListener("submit", (e) => {
+
+// ==================== FORM SUBMIT ====================
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   clearInvalid();
   setMessage("");
@@ -34,36 +35,44 @@ form.addEventListener("submit", (e) => {
     return;
   }
 
-  // Find user in localStorage.users
-  const users = getUsers();
-  const user = users.find(
-    (u) => u.username.toLowerCase() === username.toLowerCase()
-  );
+  // ==================== CALL SERVER API ====================
+  try {
+    const res = await fetch("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
 
-  if (!user) {
-    usernameEl.classList.add("invalid");
-    setMessage("User not found. Please register first.");
-    return;
+    const data = await res.json();
+
+    if (!res.ok) {
+      // Server rejected login
+      setMessage(data.error || "Login failed.");
+      
+      if (data.error?.includes("not found")) {
+        usernameEl.classList.add("invalid");
+      }
+
+      if (data.error?.includes("Incorrect")) {
+        passwordEl.classList.add("invalid");
+      }
+
+      return;
+    }
+
+    // ==================== SUCCESS ====================
+    setMessage("Login successful! Redirecting...", true);
+
+    // Save logged user in session storage
+    sessionStorage.setItem("currentUser", JSON.stringify(data.user));
+
+    // Redirect to search page
+    setTimeout(() => {
+      window.location.href = "../search/search.html";
+    }, 800);
+
+  } catch (err) {
+    console.error(err);
+    setMessage("Server error – unable to connect.");
   }
-
-  if (user.password !== password) {
-    passwordEl.classList.add("invalid");
-    setMessage("Incorrect password. Try again.");
-    return;
-  }
-
-  // Success: save currentUser in sessionStorage and redirect
-  const currentUser = {
-    username: user.username,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    imageUrl: user.imageUrl
-  };
-
-  sessionStorage.setItem("currentUser", JSON.stringify(currentUser));
-  setMessage("Login successful! Redirecting...", true);
-
-  setTimeout(() => {
-    window.location.href = "/search/search.html";
-  }, 500);
 });

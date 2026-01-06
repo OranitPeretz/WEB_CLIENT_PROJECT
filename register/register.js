@@ -67,18 +67,6 @@ function refreshPreview() {
 refreshPreview();
 
 
-// ==================== USER STORAGE ====================
-function getUsers() {
-  return JSON.parse(localStorage.getItem("users")) || [];
-}
-
-function usernameExists(username) {
-  return getUsers().some(
-    u => u.username.toLowerCase() === username.toLowerCase()
-  );
-}
-
-
 // ==================== UI HELPERS ====================
 function setMessage(text, isSuccess = false) {
   msg.textContent = text;
@@ -98,8 +86,8 @@ function isEmpty(value) {
 }
 
 
-// ==================== LIVE USERNAME VALIDATION ====================
-fields.username.addEventListener("input", () => {
+// ==================== LIVE USERNAME CHECK (SERVER) ====================
+fields.username.addEventListener("input", async () => {
   const username = fields.username.value.trim();
 
   if (!username) {
@@ -108,27 +96,34 @@ fields.username.addEventListener("input", () => {
     return;
   }
 
-  if (usernameExists(username)) {
-    fields.username.classList.add("invalid");
-    userLiveMsg.textContent = "❌ Username is already taken";
-    userLiveMsg.classList.remove("good");
-    userLiveMsg.classList.add("bad");
-  } else {
-    fields.username.classList.remove("invalid");
-    userLiveMsg.textContent = "✔ Username available";
-    userLiveMsg.classList.remove("bad");
-    userLiveMsg.classList.add("good");
+  try {
+    const res = await fetch("http://localhost:3000/api/auth/check-username?u=" + username);
+    const data = await res.json();
+
+    if (!data.available) {
+      fields.username.classList.add("invalid");
+      userLiveMsg.textContent = "❌ Username is already taken";
+      userLiveMsg.classList.remove("good");
+      userLiveMsg.classList.add("bad");
+    } else {
+      fields.username.classList.remove("invalid");
+      userLiveMsg.textContent = "✔ Username available";
+      userLiveMsg.classList.remove("bad");
+      userLiveMsg.classList.add("good");
+    }
+  } catch (err) {
+    console.error(err);
   }
 });
 
 
-// ==================== LIVE PASSWORD VALIDATION ====================
+// ==================== PASSWORD VALIDATION ====================
 function updateRule(isValid, iconElem, ruleElem) {
   if (isValid) {
-    iconElem.textContent = "✔"; // תו וי
+    iconElem.textContent = "✔";
     ruleElem.classList.add("valid");
   } else {
-    iconElem.textContent = "⭕"; // עיגול אדום
+    iconElem.textContent = "⭕";
     ruleElem.classList.remove("valid");
   }
 }
@@ -145,14 +140,13 @@ function validatePasswordLive(pwd) {
   return hasLetter && hasNumber && hasSpecial;
 }
 
-
 fields.password.addEventListener("input", () => {
   validatePasswordLive(fields.password.value);
 });
 
 
 // ==================== FORM SUBMIT ====================
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   clearInvalid();
   setMessage("");
@@ -164,22 +158,17 @@ form.addEventListener("submit", (e) => {
   const password = fields.password.value;
   const confirmPassword = fields.confirmPassword.value;
 
+  // CLIENT VALIDATIONS
   const missing = [];
-  if (isEmpty(firstName)) missing.push(fields.firstName);
-  if (isEmpty(lastName)) missing.push(fields.lastName);
-  if (isEmpty(username)) missing.push(fields.username);
-  if (isEmpty(password)) missing.push(fields.password);
-  if (isEmpty(confirmPassword)) missing.push(fields.confirmPassword);
+  if (!firstName) missing.push(fields.firstName);
+  if (!lastName) missing.push(fields.lastName);
+  if (!username) missing.push(fields.username);
+  if (!password) missing.push(fields.password);
+  if (!confirmPassword) missing.push(fields.confirmPassword);
 
   if (missing.length > 0) {
     markInvalid(...missing);
     setMessage("All fields except image URL are required.");
-    return;
-  }
-
-  if (usernameExists(username)) {
-    markInvalid(fields.username);
-    setMessage("Username already exists.");
     return;
   }
 
@@ -195,23 +184,37 @@ form.addEventListener("submit", (e) => {
     return;
   }
 
-  const finalAvatarUrl =
-    imageUrl || buildDefaultAvatarUrl(firstName, lastName, username);
+  // SEND TO SERVER
+  try {
+    const res = await fetch("http://localhost:3000/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username,
+        password,
+        firstName,
+        lastName,
+        imageUrl
+      })
+    });
 
-  const users = getUsers();
-  users.push({
-    username,
-    password,
-    firstName,
-    lastName,
-    imageUrl: finalAvatarUrl,
-    createdAt: new Date().toISOString(),
-  });
+    const data = await res.json();
 
-  localStorage.setItem("users", JSON.stringify(users));
-  setMessage("Registration successful! Redirecting...", true);
+    if (!res.ok) {
+      setMessage(data.error || "Registration failed.");
+      fields.username.classList.add("invalid");
+      return;
+    }
 
-  setTimeout(() => {
-    window.location.href = "../login/login.html";
-  }, 800);
+    // SUCCESS
+    setMessage("Registration successful! Redirecting...", true);
+
+    setTimeout(() => {
+      window.location.href = "../login/login.html";
+    }, 600);
+
+  } catch (err) {
+    console.error(err);
+    setMessage("Server error. Please try again.");
+  }
 });
